@@ -7,7 +7,6 @@
 #include "controllers.hh"
 #include "theme.hh"
 #include "menu.hh"
-#include "xtime.hh"
 
 
 ScreenIntro::ScreenIntro(std::string const& name, Audio& audio): Screen(name), m_audio(audio), m_first(true) {

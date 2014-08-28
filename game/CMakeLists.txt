@@ -63,7 +63,7 @@ set(SOURCES ${SOURCE_FILES} ${HEADER_FILES} ${RESOURCE_FILES})
 
 # Libraries
 
-find_package(Boost 1.36 REQUIRED COMPONENTS thread date_time program_options regex filesystem system)
+find_package(Boost 1.36 REQUIRED COMPONENTS date_time program_options regex filesystem system)
 include_directories(${Boost_INCLUDE_DIRS})
 list(APPEND LIBS ${Boost_LIBRARIES})
 
@@ -136,7 +136,7 @@ if(WIN32)
 			OUTPUT_VARIABLE MXE_HACK_STRING
 		)
 		set(CMAKE_CXX_LINK_EXECUTABLE ${CMAKE_CXX_LINK_EXECUTABLE}${MXE_HACK_STRING})
-		add_definitions(-DBOOST_THREAD_USE_LIB -DGLEW_STATIC)
+		add_definitions(-DGLEW_STATIC)
 	endif()
 	set(BIN_INSTALL .)  # Straight to Program Files/Performous with no bin subfolder.
 	set(SUBSYSTEM_WIN32 WIN32)

@@ -2,7 +2,7 @@
 #include <stdexcept>
 
 #include "webcam.hh"
-#include "xtime.hh"
+#include "timeutil.hh"
 #include "fs.hh"
 
 #ifdef USE_OPENCV
@@ -55,7 +55,7 @@ Webcam::Webcam(int cam_id):
 	}
 	#endif
 	// Start thread
-	m_thread.reset(new boost::thread(boost::ref(*this)));
+	m_thread.reset(new std::thread(std::ref(*this)));
 	#else
 	(void)cam_id; // Avoid unused warning
 	#endif
@@ -78,7 +78,7 @@ void Webcam::operator()() {
 				cv::Mat frame;
 				*m_capture >> frame;
 				if (m_writer) *m_writer << frame;
-				boost::mutex::scoped_lock l(m_mutex);
+				std::lock_guard<std::mutex> l(m_mutex);
 				// Copy the frame to storage
 				m_frame.width = frame.cols;
 				m_frame.height = frame.rows;
@@ -88,14 +88,14 @@ void Webcam::operator()() {
 			} catch (std::exception&) { std::cerr << "Error capturing webcam frame!" << std::endl; }
 		}
 		// Sleep a little, much if the cam isn't active
-		boost::thread::sleep(now() + (m_running ? 0.015 : 0.5));
+		std::this_thread::sleep_for(TimeSeconds(m_running ? 0.015 : 0.5));
 	}
 	#endif
 }
 
 void Webcam::pause(bool do_pause) {
 	#ifdef USE_OPENCV
-	boost::mutex::scoped_lock l(m_mutex);
+	std::lock_guard<std::mutex> l(m_mutex);
 	#endif
 	m_running = !do_pause;
 	m_frameAvailable = false;
@@ -106,7 +106,7 @@ void Webcam::render() {
 	if (!m_capture || !m_running) return;
 	// Do we have a new frame available?
 	if (m_frameAvailable && !m_frame.data.empty()) {
-		boost::mutex::scoped_lock l(m_mutex);
+		std::lock_guard<std::mutex> l(m_mutex);
 		// Load the image
 		Bitmap bitmap;
 		bitmap.fmt = pix::BGR;

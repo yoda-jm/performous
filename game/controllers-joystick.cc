@@ -1,6 +1,7 @@
 #include "controllers.hh"
 
 #include <boost/smart_ptr/shared_ptr.hpp>
+#include <sstream>
 #include <vector>
 
 namespace input {

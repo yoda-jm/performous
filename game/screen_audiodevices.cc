@@ -5,8 +5,9 @@
 #include "theme.hh"
 #include "audio.hh"
 #include "i18n.hh"
-#include <boost/thread.hpp>
-#include <boost/bind.hpp>
+#include <functional>
+#include <future>
+#include <thread>
 
 namespace {
 	static const int unassigned_id = -1;  // mic.dev value for unassigned
@@ -173,9 +174,10 @@ bool ScreenAudioDevices::save(bool skip_ui_config) {
 	}
 	writeConfig(); // Save the new config
 	// Give audio a little time to shutdown but then just quit
-	boost::thread audiokiller(boost::bind(&Audio::close, boost::ref(m_audio)));
-	if (!audiokiller.timed_join(boost::posix_time::milliseconds(2500)))
+	auto audiokiller = std::async(std::launch::async, std::bind(&Audio::close, &m_audio));
+	if (audiokiller.wait_for(TimeSeconds(2)) == std::future_status::timeout) {
 		Game::getSingletonPtr()->fatalError("Audio hung for some reason.\nPlease restart Performous.");
+	}
 	m_audio.restart(); // Reload audio to take the new settings into use
 	m_audio.playMusic(findFile("menu.ogg"), true); // Start music again
 	// Check that all went well

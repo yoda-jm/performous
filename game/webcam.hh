@@ -1,8 +1,8 @@
 #pragma once
 
 #include <boost/scoped_ptr.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/thread.hpp>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 #include "surface.hh"
@@ -40,8 +40,8 @@ class Webcam {
 	Dimensions const& dimensions() const { return m_surface.dimensions; }
 
   private:
-	boost::scoped_ptr<boost::thread> m_thread;
-	mutable boost::mutex m_mutex;
+	boost::scoped_ptr<std::thread> m_thread;
+	mutable std::mutex m_mutex;
 	boost::scoped_ptr<cv::VideoCapture> m_capture;
 	boost::scoped_ptr<cv::VideoWriter> m_writer;
 	CamFrame m_frame;

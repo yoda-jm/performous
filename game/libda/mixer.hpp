@@ -9,10 +9,9 @@
 
 #include "audio.hpp"
 #include <boost/scoped_ptr.hpp>
-#include <boost/thread/recursive_mutex.hpp>
-//#include <boost/thread/mutex.hpp>
 #include <algorithm>
 #include <memory>
+#include <thread>
 
 namespace da {
 
@@ -166,9 +165,9 @@ namespace da {
 		sample_t m_level;
 	};
 
-	class scoped_lock: public boost::recursive_mutex::scoped_lock {
+	class scoped_lock: public std::unique_lock<std::recursive_mutex> {
 	  public:
-		template <typename T> scoped_lock(T& obj): boost::recursive_mutex::scoped_lock(obj.m_mutex) {}
+		template <typename T> scoped_lock(T& obj): std::unique_lock<std::recursive_mutex>(obj.m_mutex) {}
 	};
 
 	class mutex_stream: boost::noncopyable {
@@ -185,7 +184,7 @@ namespace da {
 		}
 	  private:
 		callback_t m_stream;
-		mutable boost::recursive_mutex m_mutex;
+		mutable std::recursive_mutex m_mutex;
 		friend class scoped_lock;
 	};
 

@@ -4,12 +4,11 @@
  * @file portaudio.hpp OOP / RAII wrappers & utilities for PortAudio library.
  */
 
-#include <boost/thread.hpp>
 #include <boost/regex.hpp>
 #include <portaudio.h>
 #include <cstdlib>
+#include <future>
 #include <stdexcept>
-#include <stdint.h>
 
 #include "../unicode.hh"
 
@@ -168,8 +167,8 @@ namespace portaudio {
 		): Stream(input, output, sampleRate, framesPerBuffer, flags, functorCallback<Functor>, (void*)(intptr_t)&functor) {}
 		~Stream() {
 			// Give audio a little time to shutdown but then just quit
-			boost::thread audiokiller(Pa_CloseStream, m_handle);
-			if (!audiokiller.timed_join(boost::posix_time::milliseconds(5000))) {
+			auto audiokiller = std::async(std::launch::async, Pa_CloseStream, m_handle);
+			if (audiokiller.wait_for(std::chrono::seconds(5)) == std::future_status::timeout) {
 				std::cout << "PortAudio BUG: Pa_CloseStream hung for more than five seconds. Aborting." << std::endl;
 				std::abort();  // Crash. Calling exit() is prone to hang.
 			}

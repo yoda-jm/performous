@@ -7,7 +7,7 @@
 #include "i18n.hh"
 #include "profiler.hh"
 
-#include <boost/bind.hpp>
+#include <functional>
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
@@ -32,12 +32,12 @@ void Songs::reload() {
 	if (m_loading) return;
 	// Run loading thread
 	m_loading = true;
-	m_thread.reset(new boost::thread(boost::bind(&Songs::reload_internal, boost::ref(*this))));
+	m_thread.reset(new std::thread(std::bind(&Songs::reload_internal, this)));
 }
 
 void Songs::reload_internal() {
 	{
-		boost::mutex::scoped_lock l(m_mutex);
+		std::lock_guard<std::mutex> l(m_mutex);
 		m_songs.clear();
 		m_dirty = true;
 	}
@@ -48,7 +48,7 @@ void Songs::reload_internal() {
 			if (!fs::is_directory(*it)) { std::clog << "songs/info: >>> Not scanning: " << *it << " (no such directory)\n"; continue; }
 			std::clog << "songs/info: >>> Scanning " << *it << std::endl;
 			size_t count = m_songs.size();
-			reload_internal(*it);
+			reload_internal_dir(*it);
 			size_t diff = m_songs.size() - count;
 			if (diff > 0 && m_loading) std::clog << "songs/info: " << diff << " songs loaded\n";
 		} catch (std::exception& e) {
@@ -61,18 +61,18 @@ void Songs::reload_internal() {
 	m_loading = false;
 }
 
-void Songs::reload_internal(fs::path const& parent) {
+void Songs::reload_internal_dir(fs::path const& parent) {
 	if (std::distance(parent.begin(), parent.end()) > 20) { std::clog << "songs/info: >>> Not scanning: " << parent.string() << " (maximum depth reached, possibly due to cyclic symlinks)\n"; return; }
 	try {
 		boost::regex expression(R"((\.txt|^song\.ini|^notes\.xml|\.sm)$)", boost::regex_constants::icase);
 		for (fs::directory_iterator dirIt(parent), dirEnd; m_loading && dirIt != dirEnd; ++dirIt) { //loop through files
 			fs::path p = dirIt->path();
-			if (fs::is_directory(p)) { reload_internal(p); continue; } //if the file is a folder redo this function with this folder as path
+			if (fs::is_directory(p)) { reload_internal_dir(p); continue; } //if the file is a folder redo this function with this folder as path
 			if (!regex_search(p.filename().string(), expression)) continue; //if the folder does not contain any of the requested files, ignore it
 			try { //found song file, make a new song with it.
 				boost::shared_ptr<Song>s(new Song(p.parent_path(), p));
 				s->randomIdx = rand(); //give it a random identifier
-				boost::mutex::scoped_lock l(m_mutex);
+				std::lock_guard<std::mutex> l(m_mutex);
 				m_songs.push_back(s); //put it in the database
 				m_dirty = true;
 			} catch (SongParserException& e) {
@@ -125,7 +125,7 @@ void Songs::setFilter(std::string const& val) {
 
 void Songs::filter_internal() {
 	m_updateTimer.setValue(0.0);
-	boost::mutex::scoped_lock l(m_mutex);
+	std::lock_guard<std::mutex> l(m_mutex);
 	m_dirty = false;
 	RestoreSel restore(*this);
 	try {

@@ -6,9 +6,9 @@
 #include "screen.hh"
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/thread/condition.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/thread.hpp>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <cctype>
 #include <stdexcept>
 #include <sstream>
@@ -53,9 +53,9 @@ class SurfaceLoader::Impl {
 		}
 	}
 	volatile bool m_quit;
-	boost::thread m_thread;
-	boost::mutex m_mutex;
-	boost::condition m_condition;
+	std::thread m_thread;
+	std::mutex m_mutex;
+	std::condition_variable m_condition;
 	typedef std::map<void const*, Job> Jobs;
 	Jobs m_jobs;
 public:
@@ -68,7 +68,7 @@ public:
 			fs::path name;
 			{
 				// Poll for jobs to be done
-				boost::mutex::scoped_lock l(m_mutex);
+				std::unique_lock<std::mutex> l(m_mutex);
 				for (auto& job: m_jobs) {
 					if (job.second.name.empty()) continue;  // Job already done
 					name = job.second.name;
@@ -85,7 +85,7 @@ public:
 			Bitmap bitmap;
 			load(bitmap, name);
 			// Store the result
-			boost::mutex::scoped_lock l(m_mutex);
+			std::lock_guard<std::mutex> l(m_mutex);
 			auto it = m_jobs.find(target);
 			if (it == m_jobs.end()) continue;  // The job has been removed already
 			it->second.name.clear();  // Mark the job completed
@@ -94,18 +94,18 @@ public:
 	}
 	/// Add a new job, using calling Surface's address as unique ID.
 	void push(void const* t, Job const& job) {
-		boost::mutex::scoped_lock l(m_mutex);
+		std::lock_guard<std::mutex> l(m_mutex);
 		m_jobs[t] = job;
 		m_condition.notify_one();
 	}
 	/// Cancel a job in progress (no effect if the job has already completed)
 	void remove(void const* t) {
-		boost::mutex::scoped_lock l(m_mutex);
+		std::lock_guard<std::mutex> l(m_mutex);
 		m_jobs.erase(t);
 	}
 	/// Upload all completed jobs to OpenGL (must be called from a valid OpenGL context)
 	void apply() {
-		boost::mutex::scoped_lock l(m_mutex);
+		std::lock_guard<std::mutex> l(m_mutex);
 		for (auto it = m_jobs.begin(); it != m_jobs.end();) {
 			{
 				Job& j = it->second;
@@ -135,7 +135,7 @@ template <typename T> void loader(T* target, fs::path const& name) {
 	bitmap.resize(1, 1);
 	target->load(bitmap);
 	// Ask the loader to retrieve the image
-	ldr->push(target, Job(name, boost::bind(&T::load, target, _1)));
+	ldr->push(target, Job(name, std::bind(&T::load, target, std::placeholders::_1)));
 }
 
 Surface::Surface(fs::path const& filename) { loader(this, filename); }

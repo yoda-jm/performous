@@ -4,8 +4,8 @@
 #include "fs.hh"
 #include <boost/shared_ptr.hpp>
 #include <boost/scoped_ptr.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/thread.hpp>
+#include <mutex>
+#include <thread>
 #include <set>
 #include <sstream>
 #include <vector>
@@ -81,13 +81,13 @@ class Songs: boost::noncopyable {
 	int m_type, m_order;
 	void dumpSongs_internal() const;
 	void reload_internal();
-	void reload_internal(fs::path const& p);
+	void reload_internal_dir(fs::path const& p);
 	void randomize_internal();
 	void filter_internal();
 	void sort_internal();
 	volatile bool m_dirty;
 	volatile bool m_loading;
-	boost::scoped_ptr<boost::thread> m_thread;
-	mutable boost::mutex m_mutex;
+	boost::scoped_ptr<std::thread> m_thread;
+	mutable std::mutex m_mutex;
 };
 

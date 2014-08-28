@@ -5,8 +5,8 @@
 //#include "song.hh"
 #include <boost/shared_ptr.hpp>
 #include <boost/scoped_ptr.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/thread.hpp>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 /// songs class for songs screen
@@ -37,10 +37,10 @@ class Backgrounds: boost::noncopyable {
 	BGVector m_bgs;
 	int m_bgiter;
 	void reload_internal();
-	void reload_internal(fs::path const& p);
+	void reload_internal_dir(fs::path const& p);
 	volatile bool m_dirty;
 	volatile bool m_loading;
-	boost::scoped_ptr<boost::thread> m_thread;
-	mutable boost::mutex m_mutex;
+	boost::scoped_ptr<std::thread> m_thread;
+	mutable std::mutex m_mutex;
 };
 

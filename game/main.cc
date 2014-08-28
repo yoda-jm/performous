@@ -10,9 +10,9 @@
 #include "profiler.hh"
 #include "screen.hh"
 #include "songs.hh"
+#include "timeutil.hh"
 #include "video_driver.hh"
 #include "webcam.hh"
-#include "xtime.hh"
 
 // Screens
 #include "screen_intro.hh"
@@ -24,14 +24,15 @@
 #include "screen_players.hh"
 #include "screen_playlist.hh"
 
-#include <boost/bind.hpp>
+#include <functional>
+#include <future>
 #include <boost/format.hpp>
 #include <boost/program_options.hpp>
-#include <boost/thread.hpp>
 #include <csignal>
-#include <string>
-#include <vector>
 #include <cstdlib>
+#include <string>
+#include <thread>
+#include <vector>
 
 // Disable main level exception handling for debug builds (because gdb cannot properly catch throwing otherwise)
 #ifdef NDEBUG
@@ -74,7 +75,7 @@ static void checkEvents(Game& gm) {
 	SDL_Event event;
 	while(SDL_PollEvent(&event) == 1) {
 		// Let the navigation system grab any and all SDL events
-		boost::xtime eventTime = now();
+		TimePoint eventTime = now();
 		gm.controllers.pushEvent(event, eventTime);
 		switch(event.type) {
 		  case SDL_QUIT:
@@ -176,7 +177,7 @@ void mainLoop(std::string const& songlist) {
 		gm.updateScreen();  // exit/enter, any exception is fatal error
 		gm.loading(_("Loading complete"), 1.0);
 		// Main loop
-		boost::xtime time = now();
+		TimePoint time = now();
 		unsigned frames = 0;
 		std::clog << "core/info: Assets loaded, entering main loop." << std::endl;
 		while (!gm.isFinished()) {
@@ -197,7 +198,7 @@ void mainLoop(std::string const& songlist) {
 			try {
 				window.blank();
 				// Draw
-				window.render(boost::bind(&Game::drawScreen, &gm));
+				window.render(std::bind(&Game::drawScreen, &gm));
 				if (benchmarking) { glFinish(); prof("draw"); }
 				// Display (and wait until next frame)
 				window.swap();
@@ -207,15 +208,15 @@ void mainLoop(std::string const& songlist) {
 				if (benchmarking) { glFinish(); prof("surfaces"); }
 				if (benchmarking) {
 					++frames;
-					if (now() - time > 1.0) {
+					if (now() - time > TimeSeconds(1.0)) {
 						std::ostringstream oss;
 						oss << frames << " FPS";
 						gm.flashMessage(oss.str());
-						time += 1.0;
+						time += TimeSeconds(1.0);
 						frames = 0;
 					}
 				} else {
-					boost::thread::sleep(time + 0.01); // Max 100 FPS
+					std::this_thread::sleep_until(time + TimeSeconds(0.01)); // Max 100 FPS
 					time = now();
 					frames = 0;
 				}
@@ -243,7 +244,6 @@ void jstestLoop() {
 	try {
 		Window window(config["graphic/window_width"].i(), config["graphic/window_height"].i(), false);
 		// Main loop
-		boost::xtime time = now();
 		int oldjoy = -1, oldaxis = -1, oldvalue = -1;
 		while (true) {
 			SDL_Event e;
@@ -266,8 +266,7 @@ void jstestLoop() {
 				}
 			}
 			window.blank(); window.swap();
-			boost::thread::sleep(time + 0.01); // Max 100 FPS
-			time = now();
+			std::this_thread::sleep_for(TimeSeconds(0.01)); // Max 100 FPS
 		}
 	} catch (EXCEPTION& e) {
 		std::cerr << "ERROR: " << e.what() << std::endl;
@@ -360,9 +359,10 @@ int main(int argc, char** argv) try {
 		std::cout << "  --audio 'dev=\"HDA Intel\" mics=blue,red'   # HDA Intel with two mics" << std::endl;
 		std::cout << "  --audio 'dev=pulse out=2 mics=blue'       # PulseAudio with input and output" << std::endl;
 		// Give audio a little time to shutdown but then just quit
-		boost::thread audiokiller(boost::bind(&Audio::close, boost::ref(audio)));
-		if (!audiokiller.timed_join(boost::posix_time::milliseconds(2000)))
-		  std::clog << "core/warning: Closing audio hung for over two seconds." << std::endl;
+		auto audiokiller = std::async(std::launch::async, std::bind(&Audio::close, &audio));
+		if (audiokiller.wait_for(TimeSeconds(2)) == std::future_status::timeout) {
+			std::clog << "core/warning: Closing audio hung for over two seconds." << std::endl;
+		}
 		return EXIT_SUCCESS;
 	}
 	// Override XML config for options that were specified from commandline or performous.conf

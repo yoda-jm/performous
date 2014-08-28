@@ -7,11 +7,12 @@
 #include <stdexcept>
 #include <boost/noncopyable.hpp>
 #include <boost/smart_ptr/scoped_ptr.hpp>
+#include <boost/smart_ptr/shared_ptr.hpp>
 
 #include "SDL_events.h"
 
 #include "util.hh"
-#include "xtime.hh"
+#include "timeutil.hh"
 #include "configuration.hh"
 
 namespace input {
@@ -64,7 +65,7 @@ namespace input {
 		Button button; ///< Mapped button id
 		NavButton nav; ///< Navigational button interpretation
 		double value; ///< Zero for button release, up to 1.0 for press (e.g. velocity value), or axis value (-1.0 .. 1.0)
-		boost::xtime time; ///< When did the event occur
+		TimePoint time; ///< When did the event occur
 		DevType devType; ///< Device type
 		Event(): source(), hw(), nav(NAV_NONE), value(), time(), devType() {}
 		bool pressed() const { return value != 0.0; }
@@ -76,7 +77,7 @@ namespace input {
 		DevType devType;
 		NavButton button;
 		NavMenu menu;
-		boost::xtime time;
+		TimePoint time;
 		unsigned repeat;  ///< Zero for hardware event, increased by one for each auto-repeat
 		NavEvent(): source(), devType(), button(), menu(), time(), repeat() {}
 		explicit NavEvent(Event const& ev): source(ev.source), devType(ev.devType), button(ev.nav), menu(), time(ev.time), repeat() {}
@@ -107,9 +108,9 @@ namespace input {
 		/// Adopt a specific orphan device (for receiving Events).
 		DevicePtr registerDevice(SourceId const& source);
 		/// Internally poll for new events. The current time is passed for reference.
-		void process(boost::xtime const& now);
+		void process(TimePoint const& now);
 		/// Push an SDL event for processing. Returns true if the event was taken (recognized and accepted).
-		bool pushEvent(SDL_Event const& sdlEv, boost::xtime const& now);
+		bool pushEvent(SDL_Event const& sdlEv, TimePoint const& now);
 	private:
 		struct Impl;
 		boost::scoped_ptr<Impl> self;

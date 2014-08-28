@@ -5,9 +5,10 @@
 #include "execname.hh"
 #include <boost/filesystem/fstream.hpp>
 #include <boost/filesystem/operations.hpp>
+#include <mutex>
 #include <cstdlib>
 #include <iostream>
-#include <boost/thread.hpp>
+#include <thread>
 #include <set>
 #include <sstream>
 #include <algorithm>
@@ -174,8 +175,8 @@ namespace {
 			if (!bootstrapping) std::clog << logmsg << std::flush;
 		}
 	} cache;
-	boost::mutex mutex;
-	typedef boost::lock_guard<boost::mutex> Lock;
+	std::mutex mutex;
+	typedef std::lock_guard<std::mutex> Lock;
 }
 
 void pathBootstrap() { Lock l(mutex); cache.pathBootstrap(); }

@@ -5,8 +5,8 @@
 #include "theme.hh"
 #include "audio.hh"
 #include "i18n.hh"
-#include <boost/thread.hpp>
-#include <boost/bind.hpp>
+#include <thread>
+#include <functional>
 
 namespace {
 	const float yoff = 0.18; // Offset from center where to place top row

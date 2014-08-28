@@ -7,7 +7,7 @@
 #include <boost/ptr_container/ptr_map.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/range/iterator_range.hpp>
-#include <boost/thread/mutex.hpp>
+#include <mutex>
 #include <boost/lexical_cast.hpp>
 #include <cmath>
 #include <iostream>
@@ -78,7 +78,7 @@ class AudioClock {
 	static double getSeconds(time_duration t) { return 1e-6 * t.total_microseconds(); }
 	static time_duration getDuration(double seconds) { return microseconds(1e6 * seconds); }
 
-	mutable boost::mutex m_mutex;
+	mutable std::mutex m_mutex;
 	ptime m_baseTime; ///< A reference time (corresponds to m_basePos)
 	double m_basePos; ///< A reference position in song
 	double m_skew; ///< The skew ratio applied to system time (since baseTime)
@@ -98,7 +98,7 @@ public:
 	void timeSync(time_duration audioPos, time_duration length) {
 		constexpr double maxError = 0.1;  // Step the clock instead of skewing if over 100 ms off
 		// Full correction requires locking, but we can update max without lock too
-		boost::mutex::scoped_try_lock l(m_mutex, boost::defer_lock);
+		std::unique_lock<std::mutex> l(m_mutex, std::defer_lock);
 		double max = getSeconds(audioPos + length);
 		if (!l.try_lock()) {
 			if (max > m_max) m_max = max; // Allow increasing m_max
@@ -130,7 +130,7 @@ public:
 	}
 	/// Get the current position in seconds
 	double pos() const {
-		boost::mutex::scoped_lock l(m_mutex);
+		std::lock_guard<std::mutex> l(m_mutex);
 		return pos_internal(getTime());
 	}
 };
@@ -298,9 +298,9 @@ struct Command {
 
 /// Audio output callback wrapper. The playback Device calls this when it needs samples.
 struct Output {
-	boost::mutex mutex;
-	boost::mutex samples_mutex;
-	boost::mutex synth_mutex;
+	std::mutex mutex;
+	std::mutex samples_mutex;
+	std::mutex synth_mutex;
 	std::auto_ptr<Synth> synth;
 	std::auto_ptr<Music> preloading;
 	boost::ptr_vector<Music> playing, disposing;
@@ -311,7 +311,7 @@ struct Output {
 	Output(): paused(false) {}
 
 	void callbackUpdate() {
-		boost::mutex::scoped_try_lock l(mutex);
+		std::unique_lock<std::mutex> l(mutex);
 		if (!l.owns_lock()) return;  // No update now, try again later (cannot stop and wait for mutex to be released)
 		// Move from preloading to playing, if ready
 		if (preloading.get() && preloading->prepare()) {
@@ -344,7 +344,7 @@ struct Output {
 		// Mix in from the streams currently playing
 		for (size_t i = 0; i < playing.size();) {
 			bool keep = playing[i](begin, end);  // Do the actual mixing
-			boost::mutex::scoped_try_lock l(mutex, boost::defer_lock);
+			std::unique_lock<std::mutex> l(mutex, std::defer_lock);
 			if (!keep && l.try_lock()) {
 				// Dispose streams no longer needed by moving them to another container (that will be cleared by another thread).
 				disposing.transfer(disposing.end(), playing.begin() + i, playing);
@@ -363,7 +363,7 @@ struct Output {
 		// Mix in the samples currently playing
 		{
 			// samples should not be created/destroyed on the fly
-			boost::mutex::scoped_try_lock l(samples_mutex, boost::defer_lock);
+			std::unique_lock<std::mutex> l(samples_mutex, std::defer_lock);
 			if(l.try_lock()) {
 				for(boost::ptr_map<std::string, Sample>::iterator it = samples.begin() ; it != samples.end() ; ++it) {
 					(*it->second)(begin, end);
@@ -372,7 +372,7 @@ struct Output {
 		}
 		// Mix synth if available (should be done at the end)
 		{
-			boost::mutex::scoped_try_lock l(synth_mutex, boost::defer_lock);
+			std::unique_lock<std::mutex> l(synth_mutex, std::defer_lock);
 			if(l.try_lock() && synth.get() && !playing.empty()) {
 				(*synth.get())(begin, end, playing[0].pos());
 			}
@@ -520,25 +520,25 @@ bool Audio::hasPlayback() const {
 }
 
 void Audio::loadSample(std::string const& streamId, fs::path const& filename) {
-	boost::mutex::scoped_lock l(self->output.samples_mutex);
+	std::lock_guard<std::mutex> l(self->output.samples_mutex);
 	self->output.samples.insert(streamId, std::auto_ptr<Sample>(new Sample(filename, getSR())));
 }
 
 void Audio::playSample(std::string const& streamId) {
 	Output& o = self->output;
-	boost::mutex::scoped_lock l(o.mutex);
+	std::lock_guard<std::mutex> l(o.mutex);
 	Command cmd = { Command::SAMPLE_RESET, streamId, 0.0 };
 	o.commands.push_back(cmd);
 }
 
 void Audio::unloadSample(std::string const& streamId) {
-	boost::mutex::scoped_lock l(self->output.samples_mutex);
+	std::lock_guard<std::mutex> l(self->output.samples_mutex);
 	self->output.samples.erase(streamId);
 }
 
 void Audio::playMusic(Audio::Files const& filenames, bool preview, double fadeTime, double startPos) {
 	Output& o = self->output;
-	boost::mutex::scoped_lock l(o.mutex);
+	std::lock_guard<std::mutex> l(o.mutex);
 	o.disposing.clear();  // Delete disposed streams
 	o.preloading.reset(new Music(filenames, getSR(), preview));
 	Music& m = *o.preloading.get();
@@ -558,7 +558,7 @@ void Audio::stopMusic() {
 	{
 		Output& o = self->output;
 		// stop synth when music is stopped
-		boost::mutex::scoped_lock l(o.synth_mutex);
+		std::lock_guard<std::mutex> l(o.synth_mutex);
 		o.synth.reset();
 	}
 }
@@ -568,39 +568,39 @@ void Audio::fadeout(double fadeTime) {
 	{
 		Output& o = self->output;
 		// stop synth when music is stopped
-		boost::mutex::scoped_lock l(o.synth_mutex);
+		std::lock_guard<std::mutex> l(o.synth_mutex);
 		o.synth.reset();
 	}
 }
 
 double Audio::getPosition() const {
 	Output& o = self->output;
-	boost::mutex::scoped_lock l(o.mutex);
+	std::lock_guard<std::mutex> l(o.mutex);
 	return (o.playing.empty() || o.preloading.get()) ? getNaN() : o.playing[0].pos();
 }
 
 double Audio::getLength() const {
 	Output& o = self->output;
-	boost::mutex::scoped_lock l(o.mutex);
+	std::lock_guard<std::mutex> l(o.mutex);
 	return (o.playing.empty() || o.preloading.get()) ? getNaN() : o.playing[0].duration();
 }
 
 bool Audio::isPlaying() const {
 	Output& o = self->output;
-	boost::mutex::scoped_lock l(o.mutex);
+	std::lock_guard<std::mutex> l(o.mutex);
 	return o.preloading.get() || !o.playing.empty();
 }
 
 void Audio::seek(double offset) {
 	Output& o = self->output;
-	boost::mutex::scoped_lock l(o.mutex);
+	std::lock_guard<std::mutex> l(o.mutex);
 	for (auto& trk: o.playing) trk.seek(clamp(trk.pos() + offset, 0.0, trk.duration()));
 	pause(false);
 }
 
 void Audio::seekPos(double pos) {
 	Output& o = self->output;
-	boost::mutex::scoped_lock l(o.mutex);
+	std::lock_guard<std::mutex> l(o.mutex);
 	for (auto& trk: o.playing) trk.seek(pos);
 	pause(false);
 }
@@ -610,21 +610,21 @@ bool Audio::isPaused() const { return self->output.paused; }
 
 void Audio::streamFade(std::string track, double fadeLevel) {
 	Output& o = self->output;
-	boost::mutex::scoped_lock l(o.mutex);
+	std::lock_guard<std::mutex> l(o.mutex);
 	Command cmd = { Command::TRACK_FADE, track, fadeLevel };
 	o.commands.push_back(cmd);
 }
 
 void Audio::streamBend(std::string track, double pitchFactor) {
 	Output& o = self->output;
-	boost::mutex::scoped_lock l(o.mutex);
+	std::lock_guard<std::mutex> l(o.mutex);
 	Command cmd = { Command::TRACK_PITCHBEND, track, pitchFactor };
 	o.commands.push_back(cmd);
 }
 
 void Audio::toggleSynth(Notes const& notes) {
 	Output& o = self->output;
-	boost::mutex::scoped_lock l(o.synth_mutex);
+	std::lock_guard<std::mutex> l(o.synth_mutex);
 	o.synth.get() ?  o.synth.reset() : o.synth.reset(new Synth(notes, getSR()));
 }
 

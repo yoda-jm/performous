@@ -1,12 +1,13 @@
 #include "ffmpeg.hh"
 
 #include "config.hh"
+#include "timeutil.hh"
 #include "util.hh"
-#include "xtime.hh"
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
 
 extern "C" {
 #include AVCODEC_INCLUDE
@@ -24,7 +25,7 @@ extern "C" {
 
 #define AUDIO_CHANNELS 2
 
-/*static*/ boost::mutex FFmpeg::s_avcodec_mutex;
+/*static*/ std::mutex FFmpeg::s_avcodec_mutex;
 
 namespace {
 	std::string ffversion(unsigned ver) {
@@ -43,7 +44,7 @@ FFmpeg::FFmpeg(fs::path const& _filename, unsigned int rate):
   m_seekTarget(getNaN()), m_position(), m_duration(), m_streamId(-1),
   m_mediaType(rate ? AVMEDIA_TYPE_AUDIO : AVMEDIA_TYPE_VIDEO),
   m_formatContext(), m_codecContext(), m_resampleContext(), m_swsContext(),
-  m_thread(new boost::thread(boost::ref(*this)))
+  m_thread(new std::thread(std::ref(*this)))
 {
 	static bool versionChecked = false;
 	if (!versionChecked) {
@@ -81,7 +82,7 @@ FFmpeg::~FFmpeg() {
 }
 
 void FFmpeg::open() {
-	boost::mutex::scoped_lock l(s_avcodec_mutex);
+	std::lock_guard<std::mutex> l(s_avcodec_mutex);
 	av_register_all();
 	av_log_set_level(AV_LOG_ERROR);
 	if (avformat_open_input(&m_formatContext, m_filename.string().c_str(), nullptr, nullptr)) throw std::runtime_error("Cannot open input file");
@@ -137,7 +138,7 @@ void FFmpeg::operator()() {
 			errors = 0;
 		} catch (eof_error&) {
 			videoQueue.push(new Bitmap()); // EOF marker
-			boost::thread::sleep(now() + 0.1);
+			std::this_thread::sleep_for(TimeSeconds(0.1));
 		} catch (std::exception& e) {
 			std::clog << "ffmpeg/error: " << m_filename << ": " << e.what() << std::endl;
 			if (++errors > 2) { std::clog << "ffmpeg/error: FFMPEG terminating due to multiple errors" << std::endl; m_quit = true; }
@@ -146,7 +147,7 @@ void FFmpeg::operator()() {
 	audioQueue.reset();
 	videoQueue.reset();
 	// TODO: use RAII for freeing resources (to prevent memory leaks)
-	boost::mutex::scoped_lock l(s_avcodec_mutex); // avcodec_close is not thread-safe
+	std::lock_guard<std::mutex> l(s_avcodec_mutex); // avcodec_close is not thread-safe
 	if (m_resampleContext) avresample_close(m_resampleContext);
 	if (m_codecContext) avcodec_close(m_codecContext);
 #if LIBAVFORMAT_VERSION_INT >= AV_VERSION_INT(53, 17, 0)
@@ -159,7 +160,7 @@ void FFmpeg::operator()() {
 void FFmpeg::seek(double time, bool wait) {
 	m_seekTarget = time;
 	videoQueue.reset(); audioQueue.reset(); // Empty these to unblock the internals in case buffers were full
-	if (wait) while (!m_quit && m_seekTarget == m_seekTarget) boost::thread::sleep(now() + 0.01);
+	if (wait) while (!m_quit && m_seekTarget == m_seekTarget) std::this_thread::sleep_for(TimeSeconds(0.01));
 }
 
 void FFmpeg::seek_internal() {

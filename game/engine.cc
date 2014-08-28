@@ -4,9 +4,10 @@
 #include "song.hh"
 #include "database.hh"
 #include "configuration.hh"
-#include <boost/bind.hpp>
+#include <functional>
 #include <iostream>
 #include <list>
+#include <thread>
 
 const double Engine::TIMESTEP = 0.01;
 
@@ -25,17 +26,17 @@ Engine::Engine(Audio& audio, VocalTrackPtrs vocals, Database& database):
 		m_database.cur.push_back(Player(*vocals[i], a, frames));
 		++i;
 	}
-	m_thread.reset(new boost::thread(boost::ref(*this)));
+	m_thread.reset(new std::thread(std::ref(*this)));
 }
 
 void Engine::operator()() {
 	while (!m_quit) {
-		std::for_each(m_database.cur.begin(), m_database.cur.end(), boost::bind(&Player::prepare, _1));
+		std::for_each(m_database.cur.begin(), m_database.cur.end(), std::bind(&Player::prepare, std::placeholders::_1));
 		double t = m_audio.getPosition() - config["audio/round-trip"].f();
 		double timeLeft = m_time - t;
 		if (timeLeft != timeLeft || timeLeft > 1.0) timeLeft = 1.0;  // FIXME: Workaround for NaN values and other weirdness (should fix the weirdness instead)
-		if (timeLeft > 0.0) { boost::thread::sleep(now() + std::min(TIMESTEP, timeLeft)); continue; }
-		std::for_each(m_database.cur.begin(), m_database.cur.end(), boost::bind(&Player::update, _1));
+		if (timeLeft > 0.0) { std::this_thread::sleep_for(TimeSeconds(std::min(TIMESTEP, timeLeft))); continue; }
+		std::for_each(m_database.cur.begin(), m_database.cur.end(), std::bind(&Player::update, std::placeholders::_1));
 		m_time += TIMESTEP;
 	}
 }
