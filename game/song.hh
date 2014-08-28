@@ -3,7 +3,6 @@
 #include "i18n.hh"
 #include "notes.hh"
 #include "util.hh"
-#include <boost/foreach.hpp>
 #include <boost/noncopyable.hpp>
 #include <stdexcept>
 #include <string>
@@ -78,9 +77,7 @@ class Song: boost::noncopyable {
 	}
 	std::vector<std::string> getVocalTrackNames() const {
 		std::vector<std::string> result;
-		BOOST_FOREACH(VocalTracks::value_type const &it, vocalTracks) {
-			result.push_back(it.first);
-		}
+		for (auto const& mapIt: vocalTracks) result.push_back(mapIt.first);
 		return result;
 	}
 
