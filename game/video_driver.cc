@@ -1,15 +1,14 @@
 #include "video_driver.hh"
 
+#include <boost/filesystem.hpp>
 #include "config.hh"
+#include "controllers.hh"
 #include "fbo.hh"
 #include "fs.hh"
 #include "glmath.hh"
 #include "image.hh"
-#include "util.hh"
-#include "controllers.hh"
 #include "screen.hh"
-#include <boost/date_time.hpp>
-
+#include "util.hh"
 
 #ifndef GLEW_ARB_viewport_array
 # define GLEW_ARB_viewport_array GL_FALSE
@@ -342,8 +341,12 @@ void Window::screenshot() {
 	img.bottomFirst = true;
 	// Get pixel data from OpenGL
 	glReadPixels(0, 0, img.width, img.height, GL_RGB, GL_UNSIGNED_BYTE, img.data());
-	// Compose filename from timestamp
-	fs::path filename = getHomeDir() / ("Performous_" + to_iso_string(boost::posix_time::second_clock::local_time()) + ".png");
+	// Compose filename
+	fs::path filename;
+	unsigned int num = 0;
+	do {
+		filename = getHomeDir() / ("Performous_" + std::to_string(++num) + ".png");
+	} while (fs::exists(filename));
 	// Save to disk
 	writePNG(filename.string(), img, stride);
 	std::clog << "video/info: Screenshot taken: " << filename << " (" << img.width << "x" << img.height << ")" << std::endl;
