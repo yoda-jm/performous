@@ -3,7 +3,7 @@
 #include "glmath.hh"
 #include "glshader.hh"
 #include "glutil.hh"
-#include <boost/function.hpp>
+#include <functional>
 #include <boost/ptr_container/ptr_map.hpp>
 
 unsigned int screenW();
@@ -51,7 +51,7 @@ public:
 	Window(unsigned int windowW, unsigned int windowH, bool fullscreen);
 	/// destructor
 	~Window();
-	void render(boost::function<void (void)> drawFunc);
+	void render(std::function<void (void)> drawFunc);
 	/// clears window
 	void blank();
 	/// swaps buffers
