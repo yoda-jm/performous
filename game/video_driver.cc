@@ -191,17 +191,18 @@ void Window::render(boost::function<void (void)> drawFunc) {
 		// TODO: Flash message on UI?
 	}
 
-	// Over/under only available in fullscreen
-	if (stereo && type == 2 && !m_fullscreen) stereo = false;
+	// Over/under and interlaced only available in fullscreen
+	if (stereo && type >= 2 && !m_fullscreen) stereo = false;
 
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	updateStereo(stereo ? getSeparation() : 0.0);
 	glerror.check("setup");
-	// Can we do direct to framebuffer rendering (no FBO)?
-	if (!stereo || type == 2) { view(stereo); drawFunc(); return; }
-	// Render both eyes to FBO (full resolution top/bottom for anaglyph)
+	// Over/under renders directly to framebuffer, no intermediate FBOs required
+	if (!stereo || type == 2 /* over/under */) { view(stereo); drawFunc(); return; }
+
+	// Render both eyes to FBO (anaglyph, interlaced)
 	unsigned w = s_width;
-	unsigned h = 2 * s_height;
+	unsigned h = (type < 2 ? 2 : 1) * s_height;  // Double height for anaglyph modes = full resolution
 	FBO fbo(w, h);
 	glerror.check("FBO");
 	{
@@ -219,34 +220,46 @@ void Window::render(boost::function<void (void)> drawFunc) {
 	glmath::mat4 colorMatrix = glmath::mat4::identity();
 	updateStereo(0.0);  // Disable stereo mode while we composite
 	glerror.check("FBO->FB setup");
-	for (int num = 0; num < 2; ++num) {
-		{
-			float saturation = 0.5;  // (0..1)
-			float col = (1.0 + 2.0 * saturation) / 3.0;
-			float gry = 0.5 * (1.0 - col);
-			bool out[3] = {};  // Which colors to output
-			if (type == 0 && num == 0) { out[0] = true; }  // Red
-			if (type == 0 && num == 1) { out[1] = out[2] = true; }  // Cyan
-			if (type == 1 && num == 0) { out[1] = true; }  // Green
-			if (type == 1 && num == 1) { out[0] = out[2] = true; }  // Magenta
-			for (unsigned i = 0; i < 3; ++i) {
-				for (unsigned j = 0; j < 3; ++j) {
-					double val = 0.0;
-					if (out[i]) val = (i == j ? col : gry);
-					colorMatrix(i, j) = val;
+	for (int eye = 0; eye < 2; ++eye) {
+		// Use top or bottom half of the FBO
+		Dimensions dim = Dimensions(double(w) / h).fixedWidth(1.0);
+		dim.center((eye == 0 ? 0.25 : -0.25) * dim.h());
+		if (type == 3) {
+			// Interlaced mode
+			// Placeholder code for testing
+			if (eye == 1) {
+				glEnable(GL_BLEND);
+				glBlendFunc(GL_ONE, GL_ONE);
+			}
+			fbo.getTexture().draw(dim, TexCoords(0.0, h, w, 0));
+		} else {
+			// Anaglyph mode
+			{
+				float saturation = 0.5;  // (0..1)
+				float col = (1.0 + 2.0 * saturation) / 3.0;
+				float gry = 0.5 * (1.0 - col);
+				bool out[3] = {};  // Which colors to output
+				if (type == 0 && eye == 0) { out[0] = true; }  // Red
+				if (type == 0 && eye == 1) { out[1] = out[2] = true; }  // Cyan
+				if (type == 1 && eye == 0) { out[1] = true; }  // Green
+				if (type == 1 && eye == 1) { out[0] = out[2] = true; }  // Magenta
+				for (unsigned i = 0; i < 3; ++i) {
+					for (unsigned j = 0; j < 3; ++j) {
+						double val = 0.0;
+						if (out[i]) val = (i == j ? col : gry);
+						colorMatrix(i, j) = val;
+					}
 				}
 			}
+			// Render FBO with 1:1 pixels, properly filtered/positioned for 3d
+			ColorTrans c(colorMatrix);
+			if (eye == 1) {
+				// Right eye blends over the left eye
+				glEnable(GL_BLEND);
+				glBlendFunc(GL_ONE, GL_ONE);
+			}
+			fbo.getTexture().draw(dim, TexCoords(0.0, h, w, 0));
 		}
-		// Render FBO with 1:1 pixels, properly filtered/positioned for 3d
-		ColorTrans c(colorMatrix);
-		Dimensions dim = Dimensions(double(w) / h).fixedWidth(1.0);
-		dim.center((num == 0 ? 0.25 : -0.25) * dim.h());
-		if (num == 1) {
-			// Right eye blends over the left eye
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_ONE, GL_ONE);
-		}
-		fbo.getTexture().draw(dim, TexCoords(0.0, h, w, 0));
 	}
 	glerror.check("FBO->FB postcondition");
 }
