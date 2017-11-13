@@ -2,9 +2,7 @@
 
 #include "controllers.hh"
 #include "portmidi.hh"
-#include "fs.hh"
-#include <boost/lexical_cast.hpp>
-#include <boost/ptr_container/ptr_map.hpp>
+#include <unordered_map>
 #include <boost/regex.hpp>
 
 namespace input {
@@ -21,7 +19,8 @@ namespace input {
 					std::string name = getName(dev);
 					if (!re.empty() && !regex_search(name, re)) continue;
 					// Now actually open the device
-					m_streams.insert(dev, std::auto_ptr<pm::Input>(new pm::Input(dev)));
+
+					m_streams.emplace(dev, std::unique_ptr<pm::Input>(new pm::Input(dev)));
 					std::clog << "controller-midi/info: Opened MIDI device " << name << std::endl;
 				} catch (std::runtime_error& e) {
 					std::clog << "controller-midi/warning: " << e.what() << std::endl;
@@ -37,7 +36,7 @@ namespace input {
 		}
 		bool process(Event& event) override {
 			PmEvent ev;
-			for (auto kv: m_streams) {
+			for (auto& kv: m_streams) {
 				if (Pm_Read(*kv.second, &ev, 1) != 1) continue;
 				unsigned char evnt = ev.message & 0xF0;
 				unsigned char note = ev.message >> 8;
@@ -55,7 +54,8 @@ namespace input {
 		}
 	private:
 		pm::Initialize m_init;
-		boost::ptr_map<unsigned, pm::Input> m_streams;
+		//boost::ptr_map<unsigned, pm::Input> m_streams;
+		std::unordered_map<unsigned, std::unique_ptr<pm::Input>> m_streams;
 	};
 
 	Hardware::ptr constructMidi() { return Hardware::ptr(new Midi()); }
