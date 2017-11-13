@@ -8,7 +8,6 @@
  */
 
 #include "audio.hpp"
-#include <boost/scoped_ptr.hpp>
 #include <boost/thread/recursive_mutex.hpp>
 //#include <boost/thread/mutex.hpp>
 #include <algorithm>
@@ -19,20 +18,20 @@ namespace da {
 	template <typename T> class shared_reference_wrapper {
 	  public:
 		typedef T type;
-		explicit shared_reference_wrapper(boost::shared_ptr<T> const& ptr): m_ptr(ptr) {}
+		explicit shared_reference_wrapper(std::shared_ptr<T> const& ptr): m_ptr(ptr) {}
 		bool operator()(pcm_data data) { return get()(data); }
 		operator T&() const { return *m_ptr; }
 		T& get() const { return *m_ptr; }
 		//T* get_pointer() const { return m_ptr; }
 	  private:
-		boost::shared_ptr<T> m_ptr;
+		std::shared_ptr<T> m_ptr;
 	};
 
 	template <typename T> shared_reference_wrapper<T> shared_ref(T* ptr) {
-		return shared_reference_wrapper<T>(boost::shared_ptr<T>(ptr));
+		return shared_reference_wrapper<T>(std::shared_ptr<T>(ptr));
 	}
 
-	template <typename T> shared_reference_wrapper<T> shared_ref(boost::shared_ptr<T> const& ptr) {
+	template <typename T> shared_reference_wrapper<T> shared_ref(std::shared_ptr<T> const& ptr) {
 		return shared_reference_wrapper<T>(ptr);
 	}
 
@@ -110,7 +109,7 @@ namespace da {
 			return true;
 		}
 	  private:
-		boost::shared_ptr<buffer> m_buffer;
+		std::shared_ptr<buffer> m_buffer;
 		int64_t m_pos;
 	};
 
@@ -189,7 +188,7 @@ namespace da {
 		friend class scoped_lock;
 	};
 
-	typedef std::auto_ptr<scoped_lock> lock_holder;
+	typedef std::unique_ptr<scoped_lock> lock_holder;
 
 	template <typename Key> class select {
 		typedef std::map<Key, callback_t> streams;
@@ -244,15 +243,15 @@ namespace da {
 				return;
 			}
 			// Make a new chain that produces the same output as the old one
-			boost::shared_ptr<chain> origch(new chain());
+			std::shared_ptr<chain> origch(new chain());
 			origch->streams.insert(origch->streams.end(), m_user.streams.begin() + 1, m_user.streams.end());
 			// Make a new chain for cb + fade
-			boost::shared_ptr<chain> fadech(new chain());
+			std::shared_ptr<chain> fadech(new chain());
 			fadech->add(cb);
 			fadech->add(shared_ref(new fadeinOp(time, startpos * m_settings.rate() * m_settings.channels())));
 			// Replace the output with accumulate of both chains
 			clear();
-			boost::shared_ptr<accumulate> accu(new accumulate());
+			std::shared_ptr<accumulate> accu(new accumulate());
 			accu->add(shared_ref(origch));
 			accu->add(shared_ref(fadech));
 			add(shared_ref(accu));
@@ -261,7 +260,7 @@ namespace da {
 			scoped_lock l(m_mutex);
 			if (m_user.streams.size() <= 1) return;
 			// Make a new chain that produces the same output as the old one
-			boost::shared_ptr<chain> ch(new chain());
+			std::shared_ptr<chain> ch(new chain());
 			ch->streams.insert(ch->streams.end(), m_user.streams.begin() + 1, m_user.streams.end());
 			// Replace the output with our new stream (with fade)
 			clear();
@@ -298,6 +297,6 @@ namespace da {
 		select<std::string> m_select;
 		mutex_stream m_mutex;
 		settings m_settings;
-		boost::scoped_ptr<playback> m_playback;
+		std::unique_ptr<playback> m_playback;
 	};
 }
